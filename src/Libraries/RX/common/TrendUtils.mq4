@@ -12,7 +12,7 @@ bool nestedWorkflowStartFilter() {
     return trend != 0;
 }
 
-int calculateUpperTfTrend(int step = 0) {
+int calculateUpperTfTrend(int step = -1) {
     int period1 = getUpperTimeframe(1);
     int period2 = getUpperTimeframe(2);
     
@@ -51,9 +51,9 @@ int calculateUpperTfTrend(int step = 0) {
        if(result == -1 && (price >= ema25_p1_0 && ema25_p1_0 >= ema25_p1_1 && price >= ema25_p2_0)) {
            result = 0;
        }
-    }*/
+    }
     
-    if(result != 0 && step == 10) {
+    if(result != 0 && step == -1) {
        double osma_0 = iOsMA(Symbol(), PERIOD_CURRENT, 12, 26, 9, PRICE_MEDIAN, 0);
        double osma_1 = iOsMA(Symbol(), period1, 12, 26, 9, PRICE_MEDIAN, 0);
        //double osma_2 = iOsMA(Symbol(), PERIOD_CURRENT, 12, 26, 9, PRICE_MEDIAN, 2);
@@ -66,6 +66,7 @@ int calculateUpperTfTrend(int step = 0) {
        }
            
     }
+    */
     
     
     
