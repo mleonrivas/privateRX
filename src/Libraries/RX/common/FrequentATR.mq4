@@ -1,5 +1,5 @@
 #property library FrequentATR
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
@@ -9,7 +9,7 @@
 #define ATR_INTERVALS 40
 #define MINUTES_IN_A_WEEK 7200 // a week counts as a 5-day period
 
-extern int WeeksForFrequentATR = 1;
+extern int ATRFREQ_WeeksForFrequentATR = 1;
 
 double getFrequentATR(int atrPeriod) {
    string symbol = Symbol();
@@ -21,7 +21,7 @@ double getFrequentATR(int atrPeriod) {
    int counters[ATR_INTERVALS];
    ArrayInitialize(counters, 0);
    
-   int numberOfCandles = WeeksForFrequentATR * MINUTES_IN_A_WEEK / period;
+   int numberOfCandles = ATRFREQ_WeeksForFrequentATR * MINUTES_IN_A_WEEK / period;
 
    // now check ATR value at each candle.
    for (int candle = 0; candle < numberOfCandles; candle++) {

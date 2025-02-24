@@ -20,17 +20,17 @@ class GoldAndBlueStochasticThread : public IThread {
 
       Operation OnTick() {
          Operation op = NO_OP;
-         double blue = NormalizeDouble(iStochastic(Symbol(),PERIOD_CURRENT,8,3,3,0,0,0,1),4); 
-         double gold = NormalizeDouble(iStochastic(Symbol(),PERIOD_CURRENT,76,3,4,0,0,0,1),4);
-
+         
+         double blue = iStochastic(Symbol(),PERIOD_CURRENT,8,3,3,MODE_SMA,STO_LOWHIGH,MODE_MAIN,1); 
+         double red = iStochastic(Symbol(),PERIOD_CURRENT,76,3,4,MODE_SMA,STO_LOWHIGH,MODE_MAIN,1);
+         
          // get trend
-         int trendPeriod = getUpperTrendTimeframe();
-         int trend = calculateTrend(trendPeriod);
+         int trend = calculateUpperTfTrend();
 
          // check op conditions
-         if (blue > 50.0 && blue > gold && trend == 1) {
+         if (blue > 50.0 && blue > red && trend == 1) {
             op = BUY;
-         } else if(blue < 50.0 && blue < gold && trend == -1) {
+         } else if(blue < 50.0 && blue < red && trend == -1) {
             op = SELL;
          }
      

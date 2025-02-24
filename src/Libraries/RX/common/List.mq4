@@ -1,7 +1,7 @@
 #define TOSTR(x) #x+" "   // macro for displaying an object name
 
 #property library List
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
@@ -10,7 +10,6 @@ template <typename T>
 class List {
    private:
       T* elements[];
-      //typedef bool (*Filter)(T&);
    public:
       // default constructor
       List() { }
@@ -55,26 +54,5 @@ class List {
             elements[i] = NULL;
          }
       }
-      
-      /*
-      int removeAll(Filter filter) {
-         // TODO: this is a bad algorithm of order N^2. Only wokrs well for small arrays. 
-         // To support large arrays improve this alg by doing a copy.
-         int index = 0;
-         int deleteCount = 0;
-         int currentSize = this.size();
-         while(index < currentSize) {
-            if (filter(elements[index])) {
-               //element has to be deleted
-               deleteCount++;
-               this.remove(index);
-               currentSize = this.size();
-            } else {
-               index++;
-            }
-         }
-         return deleteCount;
-      }
-      */
 };
 

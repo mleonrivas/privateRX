@@ -1,5 +1,5 @@
 #property library StatisticTargetSelector
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
@@ -8,7 +8,9 @@
 #include "..\\events\\IRecoveryEventListener.mq4"
 #include "..\\events\\RecoveryListenerRegistry.mq4"
 
-#define GRACE_BUFFER 1.05;
+#define GRACE_BUFFER 1.5;
+
+extern int TS_STAT_HistorySize = 75;
 
 class StatisticTargetSelector : public ITargetSelector {
    private:
@@ -27,8 +29,7 @@ class StatisticTargetSelector : public ITargetSelector {
          double minPrice = priceRef;
          double maxPrice = priceRef;
          int i = 0;
-         int total = 12 + level*2 + step/2;
-         while(i < total) {
+         while(i < TS_STAT_HistorySize) {
             minPrice = MathMin(minPrice, iLow(NULL, PERIOD_CURRENT, i));
             maxPrice = MathMax(minPrice, iHigh(NULL, PERIOD_CURRENT, i));
             i++;
@@ -38,18 +39,12 @@ class StatisticTargetSelector : public ITargetSelector {
          double toMaxPriceDistance = (maxPrice - priceRef) * GRACE_BUFFER;
          double maxDistance = MathMax(toMinPriceDistance, toMaxPriceDistance);
          double coverDistance = MathMax(maxDistance, initCoverDistance);
-         double targetDistance = MathMax(maxDistance, initTargetDistance);
+         double targetDistance = MathMax(maxDistance * TARGET_MULT, initTargetDistance);
 
-         double spreadComp = 1.0;
-         if(level > 0) {
-            spreadComp = 1.25;
-         }
-         targetDistance = maxDistance * spreadComp;
          result.targetDistance = targetDistance;
          result.coverDistance = coverDistance;
          return result;
       }
-
 
       void release() {
          

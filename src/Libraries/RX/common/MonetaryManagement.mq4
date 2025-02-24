@@ -1,48 +1,46 @@
 #property library MonetaryManagement
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
 
 #include ".\\Operation.mq4"
+#include ".\\List.mq4"
+#include "..\\orders\\IOrder.mq4"
 
-#define LOT_COMPENSATION_FACTOR 1.1
+extern double MM_MaxGlobalRisk = 0.2;
+extern double MM_RiskPerOperation = 0.001;
+extern double MM_MinCompensationFactor = 1.1;
+extern double MM_MaxCompensationFactor = 1.4;
+extern double MM_StepDecay = 0.1;
+
 
 class MonetaryManagement {
    private:
       // singleton instance
       static MonetaryManagement *instance;
 
-      double maxRiskPerOperation;
-      double maxGlobalRisk;
       int symbolMultiplier;
       
-      int calcStartingLots(double coverDistance) {
-         double eq = AccountEquity();
-         double amountToRisk = eq * this.maxRiskPerOperation;
-         double tickValueInAccountCurrency = MarketInfo(Symbol(), MODE_TICKVALUE);
-         double coverDistanceInPips = coverDistance / Point();
-         double lots = amountToRisk / (tickValueInAccountCurrency * coverDistanceInPips);
-         int iLots = (int) MathCeil(lots*this.symbolMultiplier);
-         return normalizeLots(iLots);
+      double compensationFactor(int level, int step) {
+         if (level > 0) {
+            return 1.0;
+         }
+         return MathMax(MM_MinCompensationFactor, MM_MaxCompensationFactor - MM_StepDecay*step);
+         
       }
 
-      MonetaryManagement(double maxRiskPerOperation, double maxTotalRisk) { 
+      MonetaryManagement() { 
          double lotStep = SymbolInfoDouble (Symbol(), SYMBOL_VOLUME_STEP);
          this.symbolMultiplier = (int) MathRound(1.0/lotStep);
-         this.maxRiskPerOperation = maxRiskPerOperation;
-         this.maxGlobalRisk = maxTotalRisk;
       }
 
    public:
-      // sets the values for the correclty calculating the lots
-      static void setup(double maxRiskPerOperation, double maxTotalRisk) {
-         if (!instance) {
-            instance = new MonetaryManagement(maxRiskPerOperation, maxTotalRisk);
-         }
-      }   
       // returns the global instace of the MonetaryManagement
       static MonetaryManagement* get() {
+         if (!instance) {
+            instance = new MonetaryManagement();
+         }
          return instance;
       }
       // Releases de Global instance of the MonetaryManagement.
@@ -50,35 +48,64 @@ class MonetaryManagement {
          delete instance;
          instance = NULL;
       }
+      
+      bool checkValidParams() {
+         bool result = MM_MaxGlobalRisk > 0 && MM_MaxGlobalRisk <= 0.4 && MM_RiskPerOperation > 0 && MM_MaxGlobalRisk >= 200*MM_RiskPerOperation;
+         if (!result) {
+            Print("ERROR IN INPUT PARAMS: MM_MaxGlobalRisk must be between 0.0 and 0.4, and MM_RiskPerOperation must be between 0.0 and MM_MaxGlobalRisk/200");
+         }
+         return result;
+      }
+      
+      int calcStartingLots(double coverDistance) {
+         if (riskIsBeyondThreshold()) {
+            return 0;
+         }
+         double eq = AccountEquity();
+         double amountToRisk = eq * MM_RiskPerOperation;
+         //Risk = distInTicks * lots * tickValue  ==> lots = amountToRisk / distInTicks * tickValue
+         double tickValueInAccountCurrency = MarketInfo(Symbol(), MODE_TICKVALUE);
+         double coverDistanceInTicks = coverDistance / MarketInfo(Symbol(), MODE_TICKSIZE);
+         double lots = amountToRisk / (tickValueInAccountCurrency * coverDistanceInTicks);
+         int iLots = (int) MathCeil(lots*this.symbolMultiplier);
+         return normalizeLots(iLots);
+      }
+      
+      bool riskIsBeyondThreshold() {
+         double bal = AccountBalance();
+         double eq = AccountEquity();
+         return eq < bal*(1 - MM_MaxGlobalRisk);
+      }
 
-      /*
-            All entries in a recovery happen in 2 price lines:
-              - The First entry prices determines the first line.
-              - The coverDistance from first entry determines the second line
-            Therefore, all entries should ideally happen at these two prices.
-            So the lots (X) should be calculated as:
-               For a buying operation:
-                  --> (X+boughtLots)*targetDistance = soldLots*(coverDistance+targetDistance)
-                  --> X = soldLots * (coverDistance + targetDistance) / targetDistance - boughtLots
-               For a selling operation, exchange boughtLots and soldLots
-      */
-      int calculateLots(Operation op, int boughtLots, int soldLots, double coverDistance, double targetDistance) { 
-         // TODO. calculate global risk and return 0 if reached.
+      int calculateLots(Operation op, int boughtLots, int soldLots, double coverDistance, double targetDistance, int level, int step, double price, List<IOrder> *buys, List<IOrder> *sells) {
          if (op == NO_OP) {
             return 0;
          }
-
          if (boughtLots == soldLots) {
             // no imbalance, we are starting
             return calcStartingLots(coverDistance);
          }
+         
          // lots imbalanced
-         double lots = 0.0;
+         double targetPrice = 0;
          if (op == BUY) {
-            lots = ((soldLots * (coverDistance + targetDistance)/targetDistance) - boughtLots) * LOT_COMPENSATION_FACTOR;
-         } else if (op == SELL) {
-            lots = ((boughtLots * (coverDistance + targetDistance)/targetDistance) - soldLots) * LOT_COMPENSATION_FACTOR;
+            targetPrice = price + targetDistance;
+         } else {
+            targetPrice = price - targetDistance;
          }
+         
+         double compensation = this.compensationFactor(level, step);
+         double totalProfit = 0.0;
+         for (int i=0; i<buys.size(); i++) {
+            IOrder *od = buys.get(i);
+            totalProfit = totalProfit + od.estimateProfitAtTarget(targetPrice);
+         }
+         for (int i=0; i<sells.size(); i++) {
+            IOrder *od = sells.get(i);
+            totalProfit = totalProfit + od.estimateProfitAtTarget(targetPrice);
+         }
+         // compensate totalProfit with a new order: targetDistance * lots = totalProfit, assuming lots are represented in integers
+         double lots = (-totalProfit / targetDistance)*compensation;
          int iLots = (int) MathCeil(lots);
          return normalizeLots(iLots);
       }

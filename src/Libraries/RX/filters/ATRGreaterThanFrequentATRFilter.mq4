@@ -1,5 +1,5 @@
 #property library ATRGreaterThanFrequentATRFilter
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
@@ -17,9 +17,9 @@ class ATRGreaterThanFrequentATRFilter : public IFilter {
 
    public:
       ATRGreaterThanFrequentATRFilter(int atrPeriod) {
-         this.atrPeriod = atrPeriod;
          this.lastCandleTime = NULL;
          this.frequentATR = 0;
+         this.atrPeriod = atrPeriod;
       }
 
       bool check() {

@@ -1,5 +1,5 @@
 #property library DataRecord
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
@@ -33,9 +33,7 @@ class DataRecord {
             this.adx = iADX(Symbol(), PERIOD_CURRENT, 14, PRICE_MEDIAN, MODE_MAIN, 0);
             this.momentum = iMomentum(Symbol(), PERIOD_CURRENT, 14, PRICE_MEDIAN, 0);
             this.mfi = iMFI(Symbol(), PERIOD_CURRENT, 14, 0);
-            this.bwmfi = iBWMFI(Symbol(), PERIOD_CURRENT, 0);
-            
-            
+            this.bwmfi = iBWMFI(Symbol(), PERIOD_CURRENT, 0);  
         }
         
         

@@ -1,0 +1,188 @@
+<html>
+<head>
+	<!-- Load plotly.js into the DOM -->
+	<script src="https://cdn.plot.ly/plotly-3.0.1.min.js"></script>
+	<script src='https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.17/d3.min.js'></script>
+    <script src='/optimizations/libs/plot.js'></script>
+    <link rel="stylesheet" href="/optimizations/libs/styles.css">
+    <script src="/optimizations/libs/navbar.js"></script>
+</head>
+<style>
+body {
+    font-family: 'Roboto', Arial, sans-serif; /* Clean, modern font */
+    font-size: 16px; /* Base font size for readability */
+    color: #333; /* Neutral text color */
+    line-height: 1.6; /* Comfortable line spacing */
+    margin: 0; /* Remove default margins */
+    padding: 0; /* Remove default padding */
+    background-color: #f9f9f9; /* Light background for modern aesthetics */
+}
+.container {
+    padding-top: 20px;
+    display: flex;
+    flex-direction: column; /* Stack items vertically */
+    align-items: center; /* Center horizontally */
+}
+.controls {
+    display: flex;
+    flex-direction: column; /* Stack items vertically */
+    gap: 1rem; /* Add space between each container */
+}
+
+.slidecontainer {
+    display: flex;
+    align-items: center; /* Align items vertically */
+    gap: 1rem; /* Add space between label and input */
+    width: 100%;
+}
+
+.inputlabel {
+    width: 300px; /* Set a fixed width for labels */
+    text-align: left; /* Align label text to the right */
+}
+
+.slider {
+    flex: 1; /* Allow the slider to take up remaining space */
+}
+.mobutton {
+    background-color: #4CAFED; /* Light blue background */
+    color: white; /* White text */
+    border: 1px solid #077bc3; /* Remove border */
+    padding: 10px 20px; /* Add padding for size */
+    border-radius: 8px; /* Rounded corners */
+    font-size: 16px; /* Modern font size */
+    cursor: pointer; /* Pointer cursor on hover */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow for a modern look */
+    transition: all 0.3s ease; /* Smooth hover effect */
+}
+
+.mobutton:hover {
+    background-color: #3A9BDC; /* Slightly darker blue on hover */
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2); /* Enhanced shadow on hover */
+    /*transform: translateY(-2px); /* Subtle lift on hover */
+}
+
+.mobutton:active {
+    background-color: #348CB8; /* Even darker blue when clicked */
+    transform: translateY(1px); /* Slight sink effect when active */
+    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.2); /* Slightly reduced shadow */
+}
+.contentbox {
+    border: 1px solid gray;
+    border-radius: 8px;
+    width: 1000px;
+    padding: 20px; /* Add padding for size */
+    background-color: white;
+    margin-bottom: 20px;
+}
+</style>
+
+<body>
+    <div id="navbar" class="navbar"></div>
+    <div class="container">
+    <div class="contentbox">
+        <h3>Interactive test results for RecoveryX</h3>
+        <p>The RecoveryX trading strategy behavior can be fined-tuned via input parameters to accomodate different scenarios such as running it on different symbols, adjust to market volatility changes, or modify its reward vs risk behavior. 
+        There are currently 3 parameters that determines whether the strategy would be profitable: 
+        <ul>
+            <li><b>TS_STAT_HistorySize</b>: Determines how far into the past we look to calculate statistically our take profit and cover targets. Common values would be between 20 and 100</li>
+            <li><b>TS_W_DistancesIncreasePercent</b>: It is a factor about how fast it adjusts the targets when they are not resulting in profitable trades. Common values are considered between 0.1 and 0.5</li>
+            <li><b>TS_W_PricePointPercentage</b>: It is a factor that influences the target distances calculations. Common values are from 0.1 to 1.0</li>
+        </ul>
+        </p>
+        <p>
+            In this interactive page, you can see how these parameters affect profitability and risk, by looking at the ~3000 tests we have run with different ternary combinations.
+            All the tests were with the same underlying conditions:
+            <ul>
+                <li><b>Symbol</b>: XAUUSD</li>
+                <li><b>Price Model</b>: Every Tick</li>
+                <li><b>Price Data</b>: <a href="https://www.dukascopy.com/swiss/english/marketwatch/historical/" target="_blank">Dukascopy Historical Data Feed (Tick data)</a></li>
+                <li><b>Timeframe</b>: 5 minutes (M5)</li>
+                <li><b>Period</b>: 3 Years (September 2021 - September 2024)</li>
+                <li><b>Initial Balance</b>: 15.000 EUR</li>
+            </ul>
+        </p>
+        <p>
+            Original MT4 Results can be seen here: 
+            <ul>
+                <li><a href="/optimizations/data/OptimizationReport_2_1.htm" target="_blank">Original MT4 Results (1)</a></li>
+                <li><a href="/optimizations/data/OptimizationReport_2_2.htm" target="_blank">Original MT4 Results (2)</a></li>
+                <li><a href="/optimizations/data/OptimizationReport_2_3.htm" target="_blank">Original MT4 Results (3)</a></li>
+                <li><a href="/optimizations/data/OptimizationReport_2_4.htm" target="_blank">Original MT4 Results (4)</a></li>
+                <li><a href="/optimizations/data/OptimizationReport_2_5.htm" target="_blank">Original MT4 Results (5)</a></li>
+                <li><a href="/optimizations/data/OptimizationReport_2_6.htm" target="_blank">Original MT4 Results (6)</a></li>
+                <li><a href="/optimizations/data/OptimizationReport_2_7.htm" target="_blank">Original MT4 Results (7)</a></li>
+            </ul>
+        </p>
+        <p>IMPORTANT NOTE: The optimization was setup to stop the test when the test reached a DD &gt; 50% or a balance &lt; 12K. 
+            The aborted tests do not show up in the tests results from MT4 above, but they can be found in MT4 logs. 
+            These log entries have been added to the 3D representation below as tests with negative results, with partial information, 
+            as there are fields that can't be calculated with the information available in logs, and therefore they appear as N/A.
+    </p>
+
+    </div>
+    <div class="controls contentbox">
+
+        <div class="slidecontainer">
+            <label id="labelx" class="inputlabel">Minimum Yearly Profit Percentage: 0</label>
+            <input type="range" min="-100" max="100" value="0" class="slider" id="min_avg_year_profit">
+        </div>
+        <div class="slidecontainer">
+            <label id="labely" class="inputlabel">Max drawdown: 50</label>
+            <input type="range" min="14" max="100" value="100" class="slider" id="max_dd">
+        </div>
+        <div class="slidecontainer">
+            <label id="labelz" class="inputlabel">Show Stopped Tests:</label>
+            <input type="checkbox" checked="checked" id="show_stopped">
+        </div>
+        <div>
+            <button id="apply_filters_btn" class="mobutton">Apply</button>
+        </div>
+        <div id="filter_results"> 
+            Result (tests that meet filters):  
+        </div>
+    </div>
+    
+	<div id='myDiv' class="contentbox"><!-- Plotly chart will be drawn inside this DIV --></div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            renderNavBar("navbar");
+            d3.csv('/optimizations/data/Optimization-Data.csv', function(err, xrows){
+                var slider = document.getElementById("min_avg_year_profit");
+                var output = document.getElementById("labelx");
+                var results = document.getElementById("filter_results");
+                output.innerHTML = "Minimum Yearly Profit Percentage: " + slider.value; 
+                
+                var slider_dd = document.getElementById("max_dd");
+                var output_dd = document.getElementById("labely");
+                output_dd.innerHTML = "Max Relative Drawdown: " + slider_dd.value;
+
+                var show_stopped = document.getElementById("show_stopped");
+                var applybtn = document.getElementById("apply_filters_btn");
+                
+                let ntests = create_plot(xrows, slider.value, slider_dd.value, show_stopped.checked);
+                results.innerHTML = "Result (tests that meet filters): " + ntests;
+                // Update the current slider value (each time you drag the slider handle)
+                slider.oninput = function() {
+                    output.innerHTML = "Minimum Yearly Profit Percentage: " + this.value;
+                }
+
+                slider_dd.oninput = function() {
+                    output_dd.innerHTML = "Max Relative Drawdown: " + slider_dd.value;
+                }
+
+                applybtn.onclick = function() {
+                    let ntests = create_plot(xrows, slider.value, slider_dd.value, show_stopped.checked);
+                    results.innerHTML = "Result (tests that meet filters): " + ntests;
+                }
+            
+            });
+        });
+        
+    </script>
+    
+
+</body>
+
+</html>

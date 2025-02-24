@@ -1,0 +1,41 @@
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #ffffff;
+    padding: 10px 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    height: 50px;
+    box-sizing: content-box;
+}
+
+.navbar .logo {
+    font-size: 20px;
+    font-weight: bold;
+    color: #2d2d2d;
+    cursor: pointer;
+}
+
+.navbar .user-section {
+    display: flex;
+    align-items: center;
+}
+
+.navbar .user-section img {
+    width: 45px;
+    height: 45px;
+    cursor: pointer;
+    border: 2px solid white;
+}
+
+.user-icon {
+    border-radius: 50%;
+}
+
+.user-icon:hover {
+    border: 2px solid rgb(220, 220, 220);
+    background-color: rgb(220, 220, 220);
+}

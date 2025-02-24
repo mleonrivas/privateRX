@@ -1,12 +1,12 @@
 #property library ShannonEntropy
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
 
 #define ENTROPY_PERIOD 200
 
-extern double EntropyCoeficient = 1.0;
+extern double SH_ENT_EntropyCoeficient = 1.0;
 
 /*
  Calculates the Shannon Entropy of the closing price, and returns whether it is within a standard deviation band from the last {ENTROPY_PERIOD}.
@@ -33,10 +33,10 @@ int shannonEntropy() {
     double lastEntropy = MathLog10(iClose(Symbol(), PERIOD_CURRENT, 2) / iClose(Symbol(), PERIOD_CURRENT, 1)) / log10_3;
 
     // classify into an entropy block
-    if (lastEntropy > EntropyCoeficient * sigma) {
+    if (lastEntropy > SH_ENT_EntropyCoeficient * sigma) {
         return 1; 
     }
-    if (lastEntropy < -EntropyCoeficient * sigma) {
+    if (lastEntropy < -SH_ENT_EntropyCoeficient * sigma) {
         return -1;
     }
     return 0;

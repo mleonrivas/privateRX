@@ -13,14 +13,24 @@
 #include "..\\orders\\MarketOrder.mq4"
 #include "..\\orders\\PartialCloseVirtualOrder.mq4"
 #include "..\\orders\\EspecialPartialOrder.mq4"
-#include "..\\targets\\TargetSelectors.mq4"
+#include "..\\targets\\SmartTargetSelector.mq4"
 #include "..\\targets\\TargetPainter.mq4"
 #include "..\\events\\RecoveryListenerRegistry.mq4"
+
+extern int RW_LoopDivisions = 13;
+extern int RW_MaxStepsPerRecovery = 5;
+extern int RW_MaxNestedRecoveries = 0;
+extern int RW_AcceptLossesOnEnd = 1;
+extern double RW_TrailingBufferFactor = 0.3;
+extern string RW_BehaviorOnReachingGlobalRisk = "CLOSE_ALL|COMPENSATE|DO_NOTHING";
+extern int RW_RecordStats = 0;
 
 enum State {
    STARTED,
    // Just opened a new order, and now we wait to hit targets: TP closes the op, SL triggers recovery.
    WAITING_TO_HIT_TARGETS,
+   // Price hit TP, now doing trailing to leverage trend. 
+   TRAILING,
    // End of loop: Reached the max ops, paired buy and sell lots, and now waiting for a thread signal to start a nested loop. 
    RECOVERY_WAITING_FOR_THREAD_SIGNAL,
    // created a nested loop and waiting for it to complete. 
@@ -55,6 +65,10 @@ class RecoveryWorkflow : public IWorkflow {
       int currentStep;
       // take profit target for current state of the loop
       double currentTarget;
+      // trailing target
+      double currentTrailingTarget;
+      // trailing distance that we allow for price to bounce.
+      double trailingBuffer;
       // cover loss price for the current state of the loop
       double currentCover;
       // total bought lots in the current state of the loop
@@ -64,12 +78,6 @@ class RecoveryWorkflow : public IWorkflow {
       // lots used for starting nested loops
       int lotsForNestedLoops;
 
-      // max number of operations we can execute per loop
-      int maxSteps;
-      // max number of nested recoveries allowed
-      int maxNestedRecoveries;
-      // Divide the current loop in the given number of nested loops
-      int loopDivisions;
       // init lots for a nested loop, calculated from open lots divided by loopDivisions
       int initLots;
 
@@ -86,8 +94,9 @@ class RecoveryWorkflow : public IWorkflow {
             this.state = WAITING_TO_HIT_TARGETS;
             return;
          } 
+         double price = (askPrice + bidPrice)/2.0;
          // we are in a top-level recovery, first operation is a new position.
-         int lots = MonetaryManagement::get().calculateLots(op, 0, 0, this.currentCoverDistance, this.currentTargetDistance);
+         int lots = MonetaryManagement::get().calculateLots(op, 0, 0, this.currentCoverDistance, this.currentTargetDistance, this.depthLevel, this.currentStep, price, NULL, NULL);
          
          if (placeNewOrder(op, askPrice, bidPrice, lots)) {
             this.state = WAITING_TO_HIT_TARGETS;
@@ -95,20 +104,45 @@ class RecoveryWorkflow : public IWorkflow {
             this.state = FAILED;
          }
       }
+      
+      bool passNextStepFilters() {
+         if (this.currentStep >= RW_MaxStepsPerRecovery) {
+            // if we reached the end of the loop, we do not need to wait for the filters.
+            return true;
+         }
+         
+         Operation op = getNextOp();
+         int trend = calculateUpperTfTrend(this.currentStep+1);
+         int svlev = this.depthLevel * 10 + this.currentStep;
+         bool doNotPassFilter = svlev > 1 && ((op == BUY && trend != 1) || (op == SELL && trend != -1));
+         return !doNotPassFilter;
+      }
+      
+      int getImbalance() {
+         return this.boughtLots - this.soldLots;
+      }
+      
+      Operation getNextOp() {
+         int imbalance = getImbalance();
+         return imbalance > 0 ? SELL : BUY;
+      }
+      
+      bool levelBuyAndSellOrders(double askPrice, double bidPrice) {
+         int imbalance = getImbalance();
+         Operation op = getNextOp();
+         int lots = MathAbs(imbalance);
+         return placeNewOrder(op, askPrice, bidPrice, lots);
+      }
 
       void nextRecoveryStep(double askPrice, double bidPrice) {
-         int imbalance = this.boughtLots - this.soldLots;
-         Operation op = imbalance > 0 ? SELL : BUY;
-         // get trend
-         int trend = calculateTrend(getUpperTrendTimeframe());
-         if (this.depthLevel > 0 && this.currentStep > 1 && ((op == BUY && trend != 1) || (op == SELL && trend != -1))) {
-            return;
-         }
+         Operation op = getNextOp();
 
          // CASE 1: We need to cover another position, and we are still within the allowed number of steps.
-         if (this.currentStep < this.maxSteps) {
+         if (this.currentStep < RW_MaxStepsPerRecovery) {
             updateTargetDistances();
-            int lots = MonetaryManagement::get().calculateLots(op, this.boughtLots, this.soldLots, this.currentCoverDistance, this.currentTargetDistance);
+            
+            int lots = MonetaryManagement::get().calculateLots(op, this.boughtLots, this.soldLots, this.currentCoverDistance, this.currentTargetDistance, this.depthLevel, this.currentStep + 1, (askPrice+bidPrice)/2.0, this.buyOrders, this.sellOrders);
+            
             if (placeNewOrder(op, askPrice, bidPrice, lots)) {
                this.state = WAITING_TO_HIT_TARGETS;
                this.currentStep = this.currentStep + 1;
@@ -117,13 +151,15 @@ class RecoveryWorkflow : public IWorkflow {
             }
             return;
          }
+         
+         
          // CASE 2: No more steps (new covers) allowed, so we have to check whether more nested loops are allowed or not:
-         if (this.depthLevel < this.maxNestedRecoveries) {
+         if (this.depthLevel < RW_MaxNestedRecoveries) {
             // another nested loop is allowed, so level lots and wait for another signal.
-            int lots = MathAbs(imbalance);
-            if (placeNewOrder(op, askPrice, bidPrice, lots)) {
+            bool leveled = levelBuyAndSellOrders(askPrice, bidPrice);
+            if (leveled) {
                // calculate the lots for all nested workflows
-               this.lotsForNestedLoops = MonetaryManagement::get().normalizeLots(this.boughtLots / this.loopDivisions);
+               this.lotsForNestedLoops = MonetaryManagement::get().normalizeLots(this.boughtLots / RW_LoopDivisions);
                this.state = RECOVERY_WAITING_FOR_THREAD_SIGNAL;
             } else {
                this.state = FAILED;
@@ -131,35 +167,36 @@ class RecoveryWorkflow : public IWorkflow {
             return;
          }
          // CASE 3: no more nested loops allowed
-         Print("No more nested loops allowed. Failing... ", this.depthLevel);
-         this.state = FAILED;
+         if(RW_AcceptLossesOnEnd > 0) {
+            // accept losses and continue
+            this.closePositions(askPrice, bidPrice);
+            moveToComplete();
+            return;
+         } else {
+            //fail
+            Print("No more nested loops allowed. Failing... ", this.depthLevel);
+            this.state = FAILED;
+         }
       }
       
+      void closePositionsWithProfit(double askPrice, double bidPrice, bool inProfit) {
+         for (int i=0; i<this.sellOrders.size(); i++) {
+            IOrder *od = this.sellOrders.get(i);
+            if (od.isStillOpen() && od.isInProfit(askPrice, bidPrice) == inProfit) {
+               od.close();
+            }
+         }
+         for (int i=0; i<this.buyOrders.size(); i++) {
+            IOrder *od = this.buyOrders.get(i);
+            if (od.isStillOpen() && od.isInProfit(askPrice, bidPrice) == inProfit) {
+               od.close();
+            }
+         }
+      }
+
       void closePositions(double askPrice, double bidPrice) {
-         for (int i=0; i<this.sellOrders.size(); i++) {
-            IOrder *od = this.sellOrders.get(i);
-            if (od.isStillOpen() && od.isInProfit(askPrice, bidPrice)) {
-               od.close();
-            }
-         }
-         for (int i=0; i<this.buyOrders.size(); i++) {
-            IOrder *od = this.buyOrders.get(i);
-            if (od.isStillOpen() && od.isInProfit(askPrice, bidPrice)) {
-               od.close();
-            }
-         }
-         for (int i=0; i<this.sellOrders.size(); i++) {
-            IOrder *od = this.sellOrders.get(i);
-            if (od.isStillOpen()) {
-               od.close();
-            }
-         }
-         for (int i=0; i<this.buyOrders.size(); i++) {
-            IOrder *od = this.buyOrders.get(i);
-            if (od.isStillOpen()) {
-               od.close();
-            }
-         }
+         this.closePositionsWithProfit(askPrice, bidPrice, true);
+         this.closePositionsWithProfit(askPrice, bidPrice, false);
       }
 
       void updateLotsAndTargets(Operation op, double askPrice, double bidPrice, int lots) {
@@ -181,7 +218,6 @@ class RecoveryWorkflow : public IWorkflow {
          int magic = this.threadId * 10000 + this.depthLevel*1000 + this.currentStep*100 + 90;
          int lotsMarket = MonetaryManagement::get().normalizeLots(lots/4);
          IOrder *esp = new EspecialPartialOrder(op, this.parentLoop.buyOrders, this.parentLoop.sellOrders, lots, lotsMarket, magic);
-         //IOrder *esp = new PartialCloseVirtualOrder(op, this.parentLoop.buyOrders, this.parentLoop.sellOrders, lots);
          esp.send();
          if (op == BUY) {
             this.buyOrders.add(esp);
@@ -249,20 +285,49 @@ class RecoveryWorkflow : public IWorkflow {
          }
          return hitTarget;
       }
+      
+      /**
+       * return true if price hit the take profit target:
+      */
+      bool hitMaxRisk() {
+         return MonetaryManagement::get().riskIsBeyondThreshold();
+      }
 
       /**
        * return true if price hit the cover target:
       */
       bool hitCover(double price) {
-         bool hitStop = false;
+         return hitSupportLevel(price, this.currentCover);
+      }
+      
+      bool changesTrend(double price) {
+         int imbalance = getImbalance();
+         double ema25_0 = iMA(Symbol(), PERIOD_CURRENT, 25, 0, MODE_EMA, PRICE_MEDIAN, 0);
+         double ema25_1 = iMA(Symbol(), PERIOD_CURRENT, 25, 0, MODE_EMA, PRICE_MEDIAN, 1);
+         double ema25_2 = iMA(Symbol(), PERIOD_CURRENT, 25, 0, MODE_EMA, PRICE_MEDIAN, 2);
+         
+         bool result = false;
+         if (imbalance > 0) {
+            result = price < ema25_0 && price < ema25_1 && price < ema25_2;
+         } else if (imbalance < 0) {
+            result = price > ema25_0 && price > ema25_1 && price > ema25_2;
+         }
+         if(result) {
+            Print("P=",price,"; E25-0=", ema25_0, "; E25_1=", ema25_1, " (I=",imbalance, ")");
+         }
+         return result;
+      }
+      
+      bool hitSupportLevel(double price, double level) {
+         bool hitLevel = false;
          if (this.boughtLots > this.soldLots) {
             // lots imbalanced to buy (more loaded in the buy leg, so eq to a buy op)
-            hitStop = price <= this.currentCover;
+            hitLevel = price <= level;
          } else if (this.boughtLots < this.soldLots) {
             // lots imbalanced to sell (more loaded in the sell leg, so eq to a sell op)
-            hitStop = price >= this.currentCover;
+            hitLevel = price >= level;
          }
-         return hitStop;
+         return hitLevel;
       }
 
       void updateTargetDistances() {
@@ -274,33 +339,89 @@ class RecoveryWorkflow : public IWorkflow {
       void moveToComplete() {
          this.state = COMPLETE;
          RecoveryListenerRegistry::get().completed(this.threadId, this.depthLevel, this.currentStep);
+         removeTargets();
          Print("WORKFLOW WITH DEPT - ", this.depthLevel, " - COMPLETE AT STEP: ", this.currentStep);
-         string fp = Symbol() + "_ExecStats_.csv";
-         writeStats(fp);
+         if (RW_RecordStats == 1) {
+            string fp = Symbol() + "_ExecStats_.csv";
+            writeStats(fp);
+         }
+      }
+      
+      void updateTrailingTarget(double askPrice, double bidPrice){
+         double price = (askPrice + bidPrice)/2.0;
+         // update trailing target
+         if (this.boughtLots > this.soldLots) {
+            this.currentTrailingTarget = MathMax(this.currentTrailingTarget, price - this.trailingBuffer);
+         } else if (this.boughtLots < this.soldLots) {
+            this.currentTrailingTarget = MathMin(this.currentTrailingTarget, price + this.trailingBuffer);
+         }
+      }
+
+      void startTrailing(double askPrice, double bidPrice) {
+         this.trailingBuffer = this.currentTargetDistance*RW_TrailingBufferFactor;
+         this.currentTrailingTarget = (askPrice + bidPrice) / 2.0;
+         updateTrailingTarget(askPrice, bidPrice);
+         renderTrailing(this.currentTrailingTarget);
+      }
+
+      void doTrailing(double askPrice, double bidPrice) {
+         // first check if trailing threshold is hit
+         double price = (askPrice + bidPrice)/2.0;
+         if (hitSupportLevel(price, this.currentTrailingTarget)) {
+            this.closePositions(askPrice, bidPrice);
+            moveToComplete();
+            return;
+         }
+
+         updateTrailingTarget(askPrice, bidPrice);
+         renderTrailing(this.currentTrailingTarget);
+      }
+      
+      void deactivateRecovery(double askPrice, double bidPrice) {
+         if(RW_BehaviorOnReachingGlobalRisk == "CLOSE_ALL") {
+            Print("CLOSING POSITIONS DUE TO RW_BehaviorOnReachingGlobalRisk = CLOSE_ALL");
+            this.closePositions(askPrice, bidPrice);
+            moveToComplete();
+         } else if(RW_BehaviorOnReachingGlobalRisk == "COMPENSATE") {
+            Print("COMPENSATING POSITIONS DUE TO RW_BehaviorOnReachingGlobalRisk = COMPENSATE");
+            this.levelBuyAndSellOrders(askPrice, bidPrice);
+         } else {
+            // DO_NOTHING
+            Print("NO ACTION TAKEN due to RW_BehaviorOnReachingGlobalRisk = DO_NOTHING");
+         }
+         
+         
+      
       }
       
    public:
-      RecoveryWorkflow(int threadIndex, int maxRecoverySteps, int maxNestedLoops, int loopDivisions, int depth = 0, int initLots = 0, RecoveryWorkflow *parentLoop = NULL) {
-         if(depth == 0) {
-            this.targetSelector = TargetSelectors::get().getWideningTS();
-         } else {
-             this.targetSelector = TargetSelectors::get().getStatisticTS();
+      static bool validateParams() {
+         if (RW_AcceptLossesOnEnd != 0 && RW_AcceptLossesOnEnd != 1) {
+            Print("RW_AcceptLossesOnEnd must be either 0 or 1");
+            return false;
          }
+         if (RW_BehaviorOnReachingGlobalRisk != "CLOSE_ALL" && RW_BehaviorOnReachingGlobalRisk != "COMPENSATE" && RW_BehaviorOnReachingGlobalRisk != "DO_NOTHING") {
+            Print("RW_BehaviorOnReachingGlobalRisk must be one of CLOSE_ALL, COMPENSATE, or DO_NOTHING");
+            return false;
+         }
+         return true;
+      }
+   
+      RecoveryWorkflow(int threadIndex, int depth = 0, int initLots = 0, RecoveryWorkflow *parentLoop = NULL) {
+         this.targetSelector = new SmartTargetSelector();
          this.threadId = threadIndex;
          this.depthLevel = depth;
          this.currentStep = 0;
-         this.maxNestedRecoveries = maxNestedLoops;
-         this.maxSteps = maxRecoverySteps;
-         this.loopDivisions = loopDivisions;
          this.nestedLoop = NULL;
          this.buyOrders = new List<IOrder>();
          this.sellOrders = new List<IOrder>();
          this.parentLoop = parentLoop;
          this.initLots = initLots;
          this.lotsForNestedLoops = 0;
+         this.currentTrailingTarget = 0.0;
          updateTargetDistances();
       }
-
+      
       bool isCompleted() {
          return state == COMPLETE;
       }
@@ -342,7 +463,7 @@ class RecoveryWorkflow : public IWorkflow {
                   // delegate nestedLots to the nested workflow, so removing them from this workflow.
                   this.boughtLots = MathMax(0, this.boughtLots - this.lotsForNestedLoops);
                   this.soldLots = MathMax(0, this.soldLots - this.lotsForNestedLoops);
-                  this.nestedLoop = new RecoveryWorkflow(this.threadId, this.maxSteps, this.maxNestedRecoveries, this.loopDivisions, this.depthLevel+1, this.lotsForNestedLoops, GetPointer(this));
+                  this.nestedLoop = new RecoveryWorkflow(this.threadId, this.depthLevel+1, this.lotsForNestedLoops, GetPointer(this));
                   RecoveryListenerRegistry::get().triggeredNestedRecovery(this.threadId, this.depthLevel, this.currentStep);
                   this.delegateTickToNestedLoop(askPrice, bidPrice, op);
                }
@@ -351,12 +472,22 @@ class RecoveryWorkflow : public IWorkflow {
                result = 0;
                if (this.hitTarget(price)) {
                   RecoveryListenerRegistry::get().hitTarget(this.threadId, this.depthLevel, this.currentStep);
-                  this.closePositions(askPrice, bidPrice);
-                  moveToComplete();
-               } else if (this.hitCover(price)) {
-                  this.nextRecoveryStep(askPrice, bidPrice);
-                  RecoveryListenerRegistry::get().hitCover(this.threadId, this.depthLevel, this.currentStep);
-               }
+                  this.state = TRAILING;
+                  startTrailing(askPrice, bidPrice);
+               } else if (this.hitMaxRisk()) {
+                  Print("DEACTIVATING EXPERT DUE TO REACH OF GLOBAL RISK");
+                  Print("BALANCE: ", AccountBalance(), " EQUITY: ", AccountEquity());
+                  deactivateRecovery(askPrice, bidPrice);
+                  ExpertRemove();
+               }else if (this.hitCover(price)){
+                  if(passNextStepFilters()) {
+                     this.nextRecoveryStep(askPrice, bidPrice);
+                     RecoveryListenerRegistry::get().hitCover(this.threadId, this.depthLevel, this.currentStep);
+                  }
+               } 
+               break;
+            case TRAILING:
+               doTrailing(askPrice, bidPrice);
                break;
          }
 
@@ -383,7 +514,8 @@ class RecoveryWorkflow : public IWorkflow {
          // parent loop will be released at the parent level, do not delete.
          parentLoop = NULL;
 
-         // deleted at expert level
+         this.targetSelector.release();
+         delete this.targetSelector;
          this.targetSelector = NULL;
       }
 

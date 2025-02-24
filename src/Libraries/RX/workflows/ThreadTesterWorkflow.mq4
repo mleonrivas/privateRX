@@ -1,5 +1,5 @@
 #property library ThreadTesterWorkflow
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
@@ -9,6 +9,8 @@
 #include "..\\orders\\IOrder.mq4"
 #include "..\\orders\\MarketOrder.mq4"
 #include "..\\common\\MonetaryManagement.mq4"
+#include "..\\targets\\ITargetSelector.mq4"
+#include "..\\targets\\TargetSelectors.mq4"
 
 class ThreadTesterWorkflow : public IWorkflow {
    private:
@@ -16,6 +18,7 @@ class ThreadTesterWorkflow : public IWorkflow {
       // allow only one operation per operation type.
       IOrder* buy;
       IOrder* sell; 
+      ITargetSelector* ts;
       double coverDistance;
       double targetDistance;
 
@@ -35,23 +38,28 @@ class ThreadTesterWorkflow : public IWorkflow {
             this.sell = NULL;
          }
       }
+      
+      void recalculateDistances() {
+         Distances d = this.ts.getDistances(0, 0);
+         this.coverDistance = d.coverDistance;
+         this.targetDistance = d.targetDistance;
+      }
 
 
    public:
-      ThreadTesterWorkflow(double coverDistance, double targetDistance) {
+      ThreadTesterWorkflow() {
          this.buy = NULL;
          this.sell = NULL;
-         this.coverDistance = coverDistance;
-         this.targetDistance = targetDistance;
+         this.ts = TargetSelectors::get().getPriceBasedTS();
+         recalculateDistances();
       }
 
       int processTickAndOp(double askPrice, double bidPrice, Operation op) {
          int res = 0;
-
-         double midpoint = (Ask + Bid) / 2.0;
-         double vol = MonetaryManagement::get().normalizeLots(MarketInfo(Symbol(), MODE_MINLOT));
-         
+         double midpoint = (askPrice + bidPrice) / 2.0;
          if (op == BUY && this.buy == NULL) {
+            recalculateDistances();
+            int vol = MonetaryManagement::get().calcStartingLots(this.coverDistance);
             res = 1;
             int magic = incrementAndGet();
             double sl = midpoint - this.coverDistance;
@@ -60,6 +68,8 @@ class ThreadTesterWorkflow : public IWorkflow {
             this.buy.send();
          }
          if (op == SELL && this.sell == NULL) {
+            recalculateDistances();
+            int vol = MonetaryManagement::get().calcStartingLots(this.coverDistance);
             res = 1;
             int magic = incrementAndGet();
             double sl = midpoint + this.coverDistance;

@@ -1,5 +1,5 @@
 #property library MarketOrder
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
@@ -59,7 +59,6 @@ class MarketOrder : public IOrder {
       void consolidateProfit() {
          if(OrderSelect(this.orderId, SELECT_BY_TICKET, MODE_HISTORY) == true) {
             double prof = OrderProfit();
-            Print("COMSOLIDATED PROFIT for oid ", this.orderId, ": ", prof);
             this.profit = this.profit + prof;
          }
       }
@@ -98,6 +97,8 @@ class MarketOrder : public IOrder {
             this.remainingLots = this.remainingLots - closingLots;
          }
          
+         consolidateProfit();
+         
          int newOID = findNewOrderId();
          this.orderId = newOID;
          
@@ -117,16 +118,25 @@ class MarketOrder : public IOrder {
       }
       
       bool isInProfit(double askPrice, double bidPrice) {
+         double closingPrice = this.type == BUY ? bidPrice : askPrice;
+         return estimateProfitAtTarget(closingPrice) > 0.0;
+      }
+
+      double estimateProfitAtTarget(double targetPrice) {
+         double baseProfit = this.profit;
+         if(remainingLots == 0) {
+            return baseProfit;
+         }
+         
          double diff = 0.0;
          if (this.type == BUY) {
             // have to sell to close
-            diff = bidPrice - this.price;
+            diff = targetPrice - this.price;
          } else {
             // have to buy to close
-            diff = this.price - askPrice;
+            diff = this.price - targetPrice;
          }
-         
-         return diff > 0.0;
+         return baseProfit + diff * this.remainingLots;
       }
 };
 

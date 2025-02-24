@@ -1,5 +1,5 @@
 #property library EntropyAndATRThread
-#property copyright "Scientia Trader QuanT"
+#property copyright "Copyright © 2024 Manuel Leon Rivas (mleonrivas@gmail.com)"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 #property strict
@@ -9,6 +9,8 @@
 #include "..\\common\\Operation.mq4"
 #include ".\\Thread.mq4"
 
+extern double THREAD_AtrFreqPeriod = 14;
+extern double THREAD_AtrFreqBandPercentage = 0.33;
 
 class EntropyAndATRThread : public IThread {
    private:
@@ -18,9 +20,9 @@ class EntropyAndATRThread : public IThread {
       int entropyBlock;
       datetime lastCandleTime;
    public:
-      EntropyAndATRThread(int atrPeriod, double atrFrequentBandPercentage) {
-         this.atrPeriod = atrPeriod;
-         this.atrFrequentBandPercentage = atrFrequentBandPercentage;
+      EntropyAndATRThread() {
+         this.atrPeriod = THREAD_AtrFreqPeriod;
+         this.atrFrequentBandPercentage = THREAD_AtrFreqBandPercentage;
          this.frequentATR = 0;
          this.entropyBlock = 0;
          this.lastCandleTime = NULL;

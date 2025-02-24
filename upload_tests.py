@@ -22,10 +22,10 @@ def process_test_file(f: str) -> str:
     content = Path(f"{FOLDER}/{f}").read_text(encoding='cp1252').replace("\n", "")
     #print(content)
     symbol = re.match(r'.*<td colspan=2>Símbolo<\/td><td colspan=4>([a-zA-Z0-9-_\.]+)', content).group(1)
-    periodMatch = re.match(r'.*<td colspan=2>Período<\/td><td colspan=4>.*\(([A-Z0-9]+)\).*\((\d\d\d\d\.\d\d.\d\d) - (\d\d\d\d\.\d\d.\d\d)\)', content)
-    timeframe = periodMatch.group(1)
-    start_date = datetime.strptime(periodMatch.group(2), '%Y.%m.%d')
-    end_date = datetime.strptime(periodMatch.group(3), '%Y.%m.%d')
+    period_match = re.match(r'.*<td colspan=2>Período<\/td><td colspan=4>.*\(([A-Z0-9]+)\).*\((\d\d\d\d\.\d\d.\d\d) - (\d\d\d\d\.\d\d.\d\d)\)', content)
+    timeframe = period_match.group(1)
+    start_date = datetime.strptime(period_match.group(2), '%Y.%m.%d')
+    end_date = datetime.strptime(period_match.group(3), '%Y.%m.%d')
     period = round(float((end_date - start_date).days)/365.0, 1)
     start_balance = float(re.match(r'.*<td>Depósito inicial<\/td><td align=right>([\d\.]+)', content).group(1))
     net_profit = float(re.match(r'.*<td>Beneficio neto total<\/td><td align=right>([\d\.]+)', content).group(1))
@@ -59,11 +59,10 @@ def upload_test(name: str):
     client = session.client('s3')
     client.upload_file(f"{FOLDER}/{name}.htm", 'ibt-quant-recoveryx-tests-data', f"{name}.htm", ExtraArgs={'ContentType': 'text/html'})
     client.upload_file(f"{FOLDER}/{name}.gif", 'ibt-quant-recoveryx-tests-data', f"{name}.gif", ExtraArgs={'ContentType': 'image/gif'})
-    return
 
 def delete_files(name):
-    Path.unlink(f"{FOLDER}/{name}.htm")
-    Path.unlink(f"{FOLDER}/{name}.gif")
+    os.unlink(f"{FOLDER}/{name}.htm")
+    os.unlink(f"{FOLDER}/{name}.gif")
 
 if __name__ == "__main__":
     main()
