@@ -34,5 +34,5 @@
 
 .DS_Store
 .vscode
-backtests/*.htm
-backtests/*.gif
+#backtests/*.htm
+#backtests/*.gif

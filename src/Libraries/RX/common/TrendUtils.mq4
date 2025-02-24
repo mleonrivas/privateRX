@@ -21,6 +21,8 @@ int calculateUpperTfTrend(int step = -1) {
     double ema25_3 = iMA(Symbol(), PERIOD_CURRENT, 25, 0, MODE_EMA, PRICE_MEDIAN, 2);
     double ema25_4 = iMA(Symbol(), PERIOD_CURRENT, 25, 0, MODE_EMA, PRICE_MEDIAN, 3);
     
+    double ema25_p1_0 = iMA(Symbol(), period1, 25, 0, MODE_EMA, PRICE_MEDIAN, 0);
+    
     double bp0 = iBearsPower(Symbol(), period2, 13, PRICE_MEDIAN, 0);
     double bp1 = iBearsPower(Symbol(), period2, 13, PRICE_MEDIAN, 1);
     double sarVal1_0 = iSAR(Symbol(), period1, 0.02, 0.2, 0);
@@ -29,10 +31,10 @@ int calculateUpperTfTrend(int step = -1) {
     double price = (Ask + Bid)/2.0;
     int result = 0;
     
-    if(sarVal1_0 > price && sarVal2_0 > price && bp0 > bp1 && price < ema25 && ema25 < ema25_2 && ema25_2 < ema25_3 && ema25_3 < ema25_4) { // && price < ema25_p1_0) {
+    if(sarVal1_0 > price && sarVal2_0 > price && bp0 > bp1 && price < ema25 && ema25 < ema25_2 && ema25_2 < ema25_3 && ema25_3 < ema25_4 && price < ema25_p1_0) {
         // bearish trend
         result = -1;
-    } else if(sarVal1_0 < price && sarVal2_0 < price && bp0 < bp1 && price > ema25 && ema25 > ema25_2 && ema25_2 > ema25_3 && ema25_3 > ema25_4) { // && price > ema25_p1_0) {
+    } else if(sarVal1_0 < price && sarVal2_0 < price && bp0 < bp1 && price > ema25 && ema25 > ema25_2 && ema25_2 > ema25_3 && ema25_3 > ema25_4 && price > ema25_p1_0) {
         // bullish trend
         result = 1;
     }
@@ -67,8 +69,6 @@ int calculateUpperTfTrend(int step = -1) {
            
     }
     */
-    
-    
     
     return result;
 }
